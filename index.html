@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Field Survey</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--ink:#f2f4f8;--muted:#9aa3b2;
+    --acc:#ffd23f;--l:#3da5ff;--r:#ff7a59;--b:#7ee081;--danger:#ff5470;--ok:#7ee081}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+  #map{position:absolute;inset:0 0 auto 0;top:0;bottom:208px}
+  #status{position:absolute;top:0;left:0;right:0;z-index:600;display:flex;gap:8px;align-items:center;
+    padding:8px 10px;background:linear-gradient(#0f1115ee,#0f111500);font-size:13px;font-weight:600}
+  .pill{background:#0008;border:1px solid var(--line);border-radius:999px;padding:5px 10px;
+    display:flex;gap:6px;align-items:center;backdrop-filter:blur(4px)}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.ok{background:var(--ok)} .dot.net{background:var(--acc)} .dot.rec{background:var(--danger);animation:b 1s infinite}
+  @keyframes b{50%{opacity:.25}}
+  #banner{position:absolute;top:46px;left:8px;right:8px;z-index:650;background:#2a1014;
+    border:1px solid var(--danger);color:#ffd0d8;padding:8px 10px;border-radius:10px;font-size:13px;display:none}
+  #panel{position:absolute;left:0;right:0;bottom:0;z-index:600;height:208px;background:var(--panel);
+    border-top:1px solid var(--line);padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;gap:8px;align-items:stretch}
+  button,input,textarea{font:inherit}
+  .cropbtn{flex:1;min-width:0;height:54px;background:#0d0f14;color:var(--ink);border:2px solid var(--acc);
+    border-radius:12px;padding:0 12px;font-weight:700;font-size:17px;text-align:left;overflow:hidden;
+    white-space:nowrap;text-overflow:ellipsis;display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .cropbtn:after{content:"▾";color:var(--acc)}
+  .seg{display:flex;gap:6px}
+  .seg button{width:54px;height:54px;border-radius:12px;border:2px solid var(--line);
+    background:#0d0f14;color:var(--muted);font-weight:800;font-size:20px}
+  .seg button.on[data-s="L"]{border-color:var(--l);color:var(--l);background:#0d2236}
+  .seg button.on[data-s="R"]{border-color:var(--r);color:var(--r);background:#2a1410}
+  .seg button.on[data-s="B"]{border-color:var(--b);color:var(--b);background:#0e2616}
+  #stamp{height:72px;border:none;border-radius:14px;background:var(--acc);color:#1a1400;
+    font-weight:900;font-size:22px;display:flex;align-items:center;justify-content:center;gap:10px;flex:1}
+  #stamp:active{transform:translateY(1px)}
+  .btn{height:54px;border-radius:12px;border:1px solid var(--line);background:#0d0f14;color:var(--ink);
+    font-weight:700;font-size:15px;padding:0 12px;display:flex;align-items:center;justify-content:center;gap:6px}
+  .btn.on{background:#2a1014;border-color:var(--danger);color:#ffd0d8}
+  .btn.wide{flex:1}.small{font-size:13px;color:var(--muted)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:900;background:var(--panel);
+    border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:14px;
+    transform:translateY(110%);transition:transform .2s;max-height:82%;overflow:auto}
+  .sheet.show{transform:none}
+  .sheet h3{margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+  .sheet label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  .sheet textarea{width:100%;background:#0d0f14;color:var(--ink);border:1px solid var(--line);
+    border-radius:10px;padding:10px;font-size:16px}
+  .sheet .seg button{flex:1;width:auto}
+  .sheetbtns{display:flex;gap:8px;margin-top:14px}
+  .photoprev{margin-top:8px;border-radius:10px;max-width:100%;max-height:160px;display:none}
+  .x{background:none;border:none;color:var(--muted);font-size:22px;width:34px;height:34px}
+  .hidden{display:none}
+  #toast{position:absolute;left:50%;top:54px;transform:translateX(-50%) translateY(-20px);z-index:1000;
+    background:#000d;border:1px solid var(--line);color:#fff;padding:9px 14px;border-radius:999px;
+    font-size:14px;font-weight:600;opacity:0;transition:.2s;pointer-events:none;max-width:92%;text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .leaflet-control-attribution{font-size:9px}
+  .lbl{background:#000a;border:1px solid #fff3;color:#fff;font-weight:700;font-size:11px;
+    padding:1px 5px;border-radius:6px;white-space:nowrap}
+  .leaflet-tooltip.lbl:before{display:none}
+  #fab{position:absolute;right:10px;z-index:600;bottom:218px;display:flex;flex-direction:column;gap:8px}
+  #fab .btn{width:52px;height:52px;padding:0;border-radius:50%;font-size:20px}
+  .ebtn{height:58px;border-radius:12px;border:1px solid var(--line);background:#0d0f14;color:var(--ink);
+    font-weight:700;font-size:16px;width:100%;margin-top:8px;text-align:left;padding:0 14px;display:flex;align-items:center}
+  #pickerList .ebtn{font-size:17px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="status">
+  <span class="pill" id="gpsPill"><span id="gpsDot" class="dot"></span><span id="gpsTxt">searching…</span></span>
+  <span class="pill"><span id="recDot" class="dot"></span><span id="recTxt">track off</span></span>
+  <span class="pill"><span id="cntTxt">0 points</span></span>
+</div>
+<div id="banner"></div>
+
+<div id="fab">
+  <button class="btn" id="locBtn" title="Center on me">◎</button>
+  <button class="btn" id="rasterBtn" title="Add map layer (GeoTIFF / KML / KMZ / GPX / GeoJSON)">🗺</button>
+  <button class="btn" id="menuBtn" title="Data menu">⋯</button>
+</div>
+
+<div id="panel">
+  <div class="row">
+    <button id="culture" class="cropbtn"><span id="cultureTxt">Winter wheat</span></button>
+    <div class="seg" id="sideSeg">
+      <button data-s="L" class="on">L</button><button data-s="R">R</button><button data-s="B">B</button>
+    </div>
+  </div>
+  <div class="row"><button id="stamp">＋ POINT <span class="small" id="stampHint"></span></button></div>
+  <div class="row">
+    <button class="btn wide" id="trackBtn">● Start track</button>
+    <button class="btn wide" id="exportBtn">⤓ Export</button>
+  </div>
+  <div class="small">Tap crop → pick → closes. Long-press map = manual point. Tap a point = photo / note.</div>
+</div>
+
+<!-- crop picker -->
+<div id="picker" class="sheet">
+  <h3 id="pickerTitle">Select crop<button class="x" id="pickerClose">×</button></h3>
+  <div id="pickerList"></div>
+</div>
+
+<!-- point editor -->
+<div id="sheet" class="sheet">
+  <h3>Point <span id="sheetCoord" class="small"></span><button class="x" id="sClose">×</button></h3>
+  <label>Crop</label>
+  <button id="sCulture" class="cropbtn"><span id="sCultureTxt"></span></button>
+  <label>Side</label>
+  <div class="seg" id="sSide"><button data-s="L">L</button><button data-s="R">R</button><button data-s="B">B</button></div>
+  <label>Note / custom crop</label>
+  <textarea id="sNote" rows="2" placeholder="e.g. mixture, or a custom crop name"></textarea>
+  <label>Photo</label>
+  <input id="sPhoto" type="file" accept="image/*" capture="environment">
+  <img id="sPhotoPrev" class="photoprev">
+  <div class="sheetbtns">
+    <button class="btn" id="sGps">⌖ To GPS</button>
+    <button class="btn" id="sDel" style="border-color:var(--danger);color:#ffd0d8">Delete</button>
+  </div>
+</div>
+
+<!-- export -->
+<div id="expSheet" class="sheet">
+  <h3>Export / share<button class="x" id="eClose">×</button></h3>
+  <div class="small" id="eInfo"></div>
+  <button class="ebtn" data-e="kmz">🌍 Google Earth — KMZ (points + photos + track)</button>
+  <button class="ebtn" data-e="points">📍 Points — GeoJSON</button>
+  <button class="ebtn" data-e="track">〰 Track — GPX</button>
+  <button class="ebtn" data-e="all">📦 Everything — GeoJSON</button>
+  <div class="small" style="margin-top:10px">Opens the system Share sheet: messenger, email, Drive, Dropbox. Export never erases your data.</div>
+</div>
+
+<!-- data menu -->
+<div id="menuSheet" class="sheet">
+  <h3>Data<button class="x" id="mClose">×</button></h3>
+  <button class="ebtn" id="clearTrack">Clear track only</button>
+  <button class="ebtn" id="delAll" style="color:#ffd0d8;border-color:var(--danger)">Delete ALL data…</button>
+  <div class="small" style="margin-top:10px">“Delete ALL” asks you to type the word DELETE first, so nothing is wiped by accident.</div>
+</div>
+
+<input id="rasterInput" type="file" accept=".tif,.tiff,.kml,.kmz,.geojson,.json,.gpx,image/tiff,.pmtiles" class="hidden">
+<div id="toast"></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script>
+"use strict";
+L.Icon.Default.imagePath="vendor/leaflet/images/";
+/* crop list, ordered by sown area in Ukraine; "Other…" pinned first for quick access */
+const CROPS=["Other…","Winter wheat","Sunflower","Maize (corn)","Spring barley","Soybean",
+  "Winter rapeseed","Winter barley","Peas","Oats","Sugar beet","Buckwheat","Rye","Millet",
+  "Sorghum","Spring wheat","Potato","Spring rapeseed","Flax","Perennial grass","Fallow","Orchard / perennial"];
+let state={points:[],track:[],recording:false,trackStart:null,trackEnd:null,
+  armedCulture:"Winter wheat",armedSide:"L",nextId:1,customCrops:[]};
+let cur=null, editingId=null, wakeLock=null, geoWatch=null;
+
+/* ---- storage: transactional IndexedDB (crash-safe), in-memory fallback ---- */
+const Store=(()=>{let db=null,ok=false,pending=false;
+  function open(){return new Promise(res=>{try{
+    const r=indexedDB.open("field_collector",1);
+    r.onupgradeneeded=e=>e.target.result.createObjectStore("kv");
+    r.onsuccess=e=>{db=e.target.result;ok=true;res();};
+    r.onerror=()=>{ok=false;res();};}catch(e){ok=false;res();}});}
+  function save(){if(!(ok&&db)||pending)return;pending=true;requestAnimationFrame(()=>{pending=false;
+    try{db.transaction("kv","readwrite").objectStore("kv").put(JSON.stringify(state),"state");}catch(e){}});}
+  function load(){return new Promise(res=>{if(!(ok&&db))return res(null);try{
+    const t=db.transaction("kv","readonly").objectStore("kv").get("state");
+    t.onsuccess=()=>res(t.result?JSON.parse(t.result):null);t.onerror=()=>res(null);
+  }catch(e){res(null);}});}
+  return {open,save,load};
+})();
+
+const $=s=>document.querySelector(s);
+function toast(m,ms=1600){const t=$("#toast");t.textContent=m;t.classList.add("show");
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),ms);}
+function fmtTs(d){const p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());}
+function nowTs(){return fmtTs(new Date());}
+
+/* ---- map ---- */
+const map=L.map("map",{zoomControl:false}).setView([50,30],6);
+L.control.zoom({position:"topright"}).addTo(map);
+const baseOSM=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+const baseSat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Esri"});
+const layersCtl=L.control.layers({"OSM":baseOSM,"Satellite":baseSat},{},{position:"topright",collapsed:true}).addTo(map);
+const loadedLayers=[]; let vColors=["#00e5ff","#ff4dd2","#ffd23f","#8aff00","#ff7a00"],vci=0;
+function nextColor(){return vColors[vci++%vColors.length];}
+function addOverlay(layer,name){layer.addTo(map);layersCtl.addOverlay(layer,name);loadedLayers.push({layer,name});}
+const trackLine=L.polyline([],{color:"#ffd23f",weight:4,opacity:.9}).addTo(map);
+let curMarker=null; const markers={};
+function sideColor(s){return s==="L"?"#3da5ff":s==="R"?"#ff7a59":"#7ee081";}
+function pointIcon(p){const c=sideColor(p.side);
+  return L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
+    html:`<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+      background:${c};border:2px solid #0008;box-shadow:0 1px 3px #000"></div>`});}
+function labelText(p){let c=p.culture||"";if(c.length>16)c=c.slice(0,15)+"…";return p.side+" · "+c;}
+function renderPoint(p){
+  if(markers[p.id])map.removeLayer(markers[p.id]);
+  const m=L.marker([p.lat,p.lon],{icon:pointIcon(p),draggable:true}).addTo(map);
+  m.bindTooltip(labelText(p),{permanent:true,direction:"right",offset:[10,0],className:"lbl"});
+  m.on("click",()=>openSheet(p.id));
+  m.on("dragend",e=>{const ll=e.target.getLatLng();const pt=state.points.find(x=>x.id===p.id);
+    pt.lat=ll.lat;pt.lon=ll.lng;Store.save();toast("Moved");});
+  markers[p.id]=m;
+}
+function renderAll(){
+  Object.values(markers).forEach(m=>map.removeLayer(m));for(const k in markers)delete markers[k];
+  state.points.forEach(renderPoint);
+  trackLine.setLatLngs(state.track.map(t=>[t[0],t[1]]));
+  $("#cntTxt").textContent=state.points.length+" points";
+}
+
+/* ---- geolocation: GPS + network fallback ---- */
+let autoFollow = true;
+
+function setGps(txt,cls){$("#gpsTxt").textContent=txt;$("#gpsDot").className="dot "+(cls||"");}
+function updateCur(pos,kind){
+  cur={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy};
+  setGps((kind==="GPS"?"GPS ±":"net ±")+Math.round(cur.acc)+"m",kind==="GPS"?"ok":"net");
+  if(!curMarker){
+      curMarker=L.circleMarker([cur.lat,cur.lon],{radius:8,color:"#fff",weight:2,fillColor:"#2db6ff",fillOpacity:.9}).addTo(map);
+      map.setView([cur.lat,cur.lon],17);
+      $("#locBtn").style.color = "var(--l)";
+  }
+  else {
+      curMarker.setLatLng([cur.lat,cur.lon]);
+	  if (autoFollow) {
+	      map.panTo([cur.lat,cur.lon], { animate: true, duration: 1.0, easeLinearity: 1 });
+		  }
+	  }
+  
+  if(state.recording){const last=state.track[state.track.length-1];
+    if(!last||haversine(last[0],last[1],cur.lat,cur.lon)>4){
+      state.track.push([cur.lat,cur.lon,nowTs()]);
+      trackLine.setLatLngs(state.track.map(t=>[t[0],t[1]]));Store.save();}}
+}
+function haversine(a,b,c,d){const R=6371000,r=Math.PI/180,dla=(c-a)*r,dlo=(d-b)*r,la=a*r,lc=c*r;
+  const h=Math.sin(dla/2)**2+Math.cos(la)*Math.cos(lc)*Math.sin(dlo/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function startWatch(high){if(geoWatch!==null)navigator.geolocation.clearWatch(geoWatch);
+  geoWatch=navigator.geolocation.watchPosition(p=>updateCur(p,high?"GPS":"net"),err=>onGeoErr(err,high),
+    {enableHighAccuracy:high,maximumAge:high?1000:30000,timeout:high?20000:30000});}
+function onGeoErr(err,high){
+  if(err&&err.code===1){setGps("access denied","");
+    showBanner("Allow location access in your browser. If the page is NOT opened over https, GPS will not work (see README).");return;}
+  if(high){setGps("trying network…","");startWatch(false);}
+  else setGps("no signal — tap to retry","");}
+function startGeo(){if(!navigator.geolocation){setGps("no geolocation","");return;}
+  navigator.geolocation.getCurrentPosition(p=>{if(!cur)updateCur(p,"net");},()=>{},
+    {enableHighAccuracy:false,maximumAge:60000,timeout:12000});
+  startWatch(true);}
+
+$("#gpsPill").addEventListener("click",()=>{toast("Re-searching…");startGeo();});
+
+map.on('dragstart', () => {
+  autoFollow = false;
+  $("#locBtn").style.color = "var(--ink)";
+});
+
+$("#locBtn").addEventListener("click",()=>{
+  autoFollow = true;
+  $("#locBtn").style.color = "var(--l)"; 
+  if(cur)map.setView([cur.lat,cur.lon],17);
+  else{toast("Searching…");startGeo();}
+});
+
+function showBanner(t){const b=$("#banner");b.textContent=t;b.style.display="block";}
+
+/* ---- crop picker (one tap = select + close) ---- */
+function cropOptions(){return CROPS.concat(state.customCrops||[]);}
+function openPicker(current,cb){
+  const list=$("#pickerList");list.innerHTML="";
+  cropOptions().forEach(opt=>{const b=document.createElement("button");b.className="ebtn";b.textContent=opt;
+    if(opt===current)b.style.borderColor="var(--acc)";
+    b.addEventListener("click",()=>{$("#picker").classList.remove("show");
+      if(opt==="Other…"){const t=prompt("Custom crop:");if(t){if(!cropOptions().includes(t)){state.customCrops.push(t);Store.save();}cb(t);}return;}
+      cb(opt);});
+    list.appendChild(b);});
+  $("#picker").classList.add("show");}
+$("#pickerClose").addEventListener("click",()=>$("#picker").classList.remove("show"));
+
+/* armed crop / side */
+function setSide(seg,s){[...seg.children].forEach(b=>b.classList.toggle("on",b.dataset.s===s));}
+$("#culture").addEventListener("click",()=>openPicker(state.armedCulture,v=>{
+  state.armedCulture=v;$("#cultureTxt").textContent=v;updateHint();Store.save();}));
+$("#sideSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  state.armedSide=b.dataset.s;setSide($("#sideSeg"),state.armedSide);Store.save();updateHint();});
+function updateHint(){$("#stampHint").textContent=state.armedSide+" · "+state.armedCulture;}
+
+/* ---- add point (one tap = labelled point) ---- */
+function addPoint(lat,lon,acc){
+  const p={id:state.nextId++,lat,lon,culture:state.armedCulture,side:state.armedSide,
+    note:"",photo:"",ts:nowTs(),acc:acc==null?null:Math.round(acc)};
+  state.points.push(p);renderPoint(p);
+  $("#cntTxt").textContent=state.points.length+" points";Store.save();
+  toast("✓ "+p.side+" · "+p.culture);}
+$("#stamp").addEventListener("click",()=>{if(!cur){toast("Waiting for fix…");return;}addPoint(cur.lat,cur.lon,cur.acc);});
+map.on("contextmenu",e=>addPoint(e.latlng.lat,e.latlng.lng,null));
+
+/* ---- point editor (auto-save) ---- */
+function openSheet(id){const p=state.points.find(x=>x.id===id);if(!p)return;editingId=id;
+  $("#sheetCoord").textContent=p.lat.toFixed(6)+", "+p.lon.toFixed(6)+(p.acc?" ±"+p.acc+"m":"");
+  $("#sCultureTxt").textContent=p.culture;setSide($("#sSide"),p.side);$("#sNote").value=p.note||"";
+  const pr=$("#sPhotoPrev");if(p.photo){pr.src=p.photo;pr.style.display="block";}else pr.style.display="none";
+  $("#sPhoto").value="";$("#sheet").classList.add("show");}
+function closeSheet(){$("#sheet").classList.remove("show");editingId=null;}
+function ep(){return state.points.find(x=>x.id===editingId);}
+$("#sClose").addEventListener("click",closeSheet);
+$("#sCulture").addEventListener("click",()=>{const p=ep();if(!p)return;openPicker(p.culture,v=>{
+  p.culture=v;$("#sCultureTxt").textContent=v;renderPoint(p);Store.save();});});
+$("#sSide").addEventListener("click",e=>{const b=e.target.closest("button");const p=ep();if(b&&p){
+  setSide($("#sSide"),b.dataset.s);p.side=b.dataset.s;renderPoint(p);Store.save();}});
+$("#sNote").addEventListener("input",()=>{const p=ep();if(p){p.note=$("#sNote").value;Store.save();}});
+$("#sPhoto").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;
+  compress(f,1280,.6).then(d=>{const p=ep();if(p)p.photo=d;const pr=$("#sPhotoPrev");pr.src=d;pr.style.display="block";Store.save();})
+    .catch(()=>toast("Photo failed"));});
+function compress(file,maxDim,q){return new Promise((res,rej)=>{const img=new Image(),url=URL.createObjectURL(file);
+  img.onload=()=>{let w=img.width,h=img.height,s=Math.min(1,maxDim/Math.max(w,h));
+    const c=document.createElement("canvas");c.width=Math.round(w*s);c.height=Math.round(h*s);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",q));};
+  img.onerror=()=>{URL.revokeObjectURL(url);rej();};img.src=url;});}
+$("#sDel").addEventListener("click",()=>{if(!confirm("Delete this point?"))return;
+  state.points=state.points.filter(x=>x.id!==editingId);
+  if(markers[editingId]){map.removeLayer(markers[editingId]);delete markers[editingId];}
+  $("#cntTxt").textContent=state.points.length+" points";Store.save();closeSheet();});
+$("#sGps").addEventListener("click",()=>{if(!cur){toast("No fix");return;}const p=ep();if(!p)return;
+  p.lat=cur.lat;p.lon=cur.lon;p.acc=Math.round(cur.acc);renderPoint(p);
+  $("#sheetCoord").textContent=p.lat.toFixed(6)+", "+p.lon.toFixed(6)+" ±"+p.acc+"m";Store.save();toast("Snapped to GPS");});
+
+/* ---- track ---- */
+async function reqWake(){try{if("wakeLock" in navigator)wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
+function relWake(){try{wakeLock&&wakeLock.release();}catch(e){}wakeLock=null;}
+$("#trackBtn").addEventListener("click",()=>{state.recording=!state.recording;const b=$("#trackBtn");
+  if(state.recording){state.trackStart=nowTs();state.trackEnd=null;b.classList.add("on");b.textContent="■ Stop track";
+    $("#recDot").className="dot rec";$("#recTxt").textContent="track ●";reqWake();
+    if(cur)state.track.push([cur.lat,cur.lon,nowTs()]);toast("Recording track");}
+  else{state.trackEnd=nowTs();b.classList.remove("on");b.textContent="● Start track";
+    $("#recDot").className="dot";$("#recTxt").textContent="track off";relWake();toast("Track stopped");}
+  Store.save();});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&state.recording)reqWake();});
+
+/* ---- add map layers: raster (GeoTIFF) + vector (KML/KMZ/GPX/GeoJSON) ---- */
+$("#rasterBtn").addEventListener("click",()=>$("#rasterInput").click());
+$("#rasterInput").addEventListener("change",async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  e.target.value="";
+
+  try {
+
+      const magicBytes = await f.slice(0, 7).text();
+
+      const isPMTiles = f.name.toLowerCase().endsWith('.pmtiles') || magicBytes === 'PMTiles';
+
+	if (isPMTiles) {
+          if (typeof pmtiles === 'undefined') throw new Error("pmtiles library not found!");
+          
+          const source = new pmtiles.FileSource(f);
+          const p = new pmtiles.PMTiles(source);
+          
+          p.getHeader().then(header => {
+              const pmtilesLayer = pmtiles.leafletRasterLayer(p, {
+                  maxNativeZoom: header.maxZoom,
+                  maxZoom: 24
+              });
+              
+              addOverlay(pmtilesLayer, f.name);
+              
+              map.fitBounds([
+                  [header.minLat, header.minLon],
+                  [header.maxLat, header.maxLon]
+              ]);
+              toast("PMTiles raster loaded!");
+          }).catch(err => {
+              showBanner("Error reading PMTiles header: " + err.message);
+          });
+          
+          return;
+      }
+
+
+      const ext=(f.name.split(".").pop()||"").toLowerCase();
+      
+      if(ext==="tif"||ext==="tiff")await addRaster(f);
+      else if(ext==="geojson"||ext==="json")addVectorGeoJSON(JSON.parse(await f.text()),f.name);
+      else if(ext==="gpx")addVectorGroup(gpxToLayers(await f.text()),f.name);
+      else if(ext==="kml")addVectorGroup(kmlToLayers(await f.text()),f.name);
+      else if(ext==="kmz"){const files=await unzip(await f.arrayBuffer());
+        const key=Object.keys(files).find(k=>/\.kml$/i.test(k));if(!key)throw new Error("no .kml inside the kmz");
+        addVectorGroup(kmlToLayers(new TextDecoder().decode(files[key])),f.name);}
+      else throw new Error("unsupported file type ."+ext);
+      
+  } catch(err) {
+      console.error(err);
+      const m=(err&&err.message)?err.message:String(err);
+      showBanner("Layer error: "+m);
+      toast("Layer failed — see top message",3500);
+  }
+});
+
+async function addRaster(f){
+  toast("Loading raster…",3500);
+  try{await loadLib("vendor/proj4.js");}catch(e){console.warn("proj4 not loaded",e);}
+  await loadLib("vendor/georaster/georaster.browser.bundle.min.js");
+  await loadLib("vendor/georaster-layer-for-leaflet.min.js");
+  if(typeof parseGeoraster!=="function")throw new Error("georaster library did not load (no internet on first use?)");
+  const gr=await parseGeoraster(await f.arrayBuffer());
+  const layer=new GeoRasterLayer({georaster:gr,opacity:.8,resolution:256});
+  addOverlay(layer,f.name);try{map.fitBounds(layer.getBounds());}catch(e){}
+  toast("Raster added — see layers ▣ top-right");
+}
+function addVectorGeoJSON(gj,name){const col=nextColor();
+  const layer=L.geoJSON(gj,{style:{color:col,weight:5,opacity:.9},
+    pointToLayer:(ft,ll)=>L.circleMarker(ll,{radius:6,color:col,fillColor:col,fillOpacity:.9}),
+    onEachFeature:(ft,l)=>{const p=ft.properties||{};const nm=p.name||p.Name||p.NAME;if(nm)l.bindPopup(String(nm));}});
+  if(!layer.getLayers().length)throw new Error("no features in GeoJSON");
+  addOverlay(layer,name);try{map.fitBounds(layer.getBounds());}catch(e){}toast("Vector added — see layers ▣");}
+function addVectorGroup(arr,name){if(!arr||!arr.length)throw new Error("no features found in the file");
+  const col=nextColor();arr.forEach(l=>{if(l.setStyle)l.setStyle({color:col,weight:5,opacity:.9});});
+  const g=L.featureGroup(arr);addOverlay(g,name);try{map.fitBounds(g.getBounds());}catch(e){}toast("Vector added — see layers ▣");}
+
+function coordsLatLng(text){return text.trim().split(/\s+/).map(s=>{const a=s.split(",");
+  return [parseFloat(a[1]),parseFloat(a[0])];}).filter(p=>isFinite(p[0])&&isFinite(p[1]));}
+function kmlToLayers(txt){const doc=new DOMParser().parseFromString(txt,"text/xml");const out=[];
+  doc.querySelectorAll("Placemark").forEach(pm=>{const nm=(pm.querySelector("name")||{}).textContent||"";
+    pm.querySelectorAll("LineString coordinates").forEach(c=>{const pts=coordsLatLng(c.textContent);if(pts.length>1)out.push(L.polyline(pts).bindPopup(nm));});
+    pm.querySelectorAll("Polygon coordinates").forEach(c=>{const pts=coordsLatLng(c.textContent);if(pts.length>2)out.push(L.polygon(pts).bindPopup(nm));});
+    pm.querySelectorAll("Point coordinates").forEach(c=>{const p=coordsLatLng(c.textContent)[0];if(p)out.push(L.marker(p).bindPopup(nm));});});
+  return out;}
+function gpxToLayers(txt){const doc=new DOMParser().parseFromString(txt,"text/xml");const out=[];
+  const seg=(sel,tag)=>doc.querySelectorAll(sel).forEach(node=>{const nm=(node.querySelector("name")||{}).textContent||tag;
+    const pts=[...node.querySelectorAll(tag)].map(pt=>[parseFloat(pt.getAttribute("lat")),parseFloat(pt.getAttribute("lon"))]).filter(p=>isFinite(p[0]));
+    if(pts.length>1)out.push(L.polyline(pts).bindPopup(nm));});
+  seg("trk","trkpt");seg("rte","rtept");
+  doc.querySelectorAll("wpt").forEach(pt=>out.push(L.marker([parseFloat(pt.getAttribute("lat")),parseFloat(pt.getAttribute("lon"))]).bindPopup((pt.querySelector("name")||{}).textContent||"")));
+  return out;}
+
+/* minimal unzip for KMZ (store + deflate via DecompressionStream) */
+async function inflateRaw(bytes){if(typeof DecompressionStream==="undefined")throw new Error("this browser can't unzip kmz — update iOS/Chrome, or load a .kml");
+  const ds=new DecompressionStream("deflate-raw");
+  return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer());}
+async function unzip(ab){const dv=new DataView(ab),u8=new Uint8Array(ab);let eocd=-1;
+  for(let i=u8.length-22;i>=0;i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}}
+  if(eocd<0)throw new Error("not a valid kmz/zip");
+  const count=dv.getUint16(eocd+10,true);let off=dv.getUint32(eocd+16,true);const files={};
+  for(let n=0;n<count;n++){if(dv.getUint32(off,true)!==0x02014b50)break;
+    const method=dv.getUint16(off+10,true),compSize=dv.getUint32(off+20,true);
+    const nameLen=dv.getUint16(off+28,true),extraLen=dv.getUint16(off+30,true),commentLen=dv.getUint16(off+32,true);
+    const lho=dv.getUint32(off+42,true);
+    const name=new TextDecoder().decode(u8.subarray(off+46,off+46+nameLen));
+    const lNameLen=dv.getUint16(lho+26,true),lExtra=dv.getUint16(lho+28,true);
+    const dstart=lho+30+lNameLen+lExtra,comp=u8.subarray(dstart,dstart+compSize);
+    if(method===0)files[name]=comp;else if(method===8)files[name]=await inflateRaw(comp);
+    off+=46+nameLen+extraLen+commentLen;}
+  return files;}
+
+function loadLib(src){return new Promise((res,rej)=>{
+  if([...document.scripts].some(s=>s.src===src))return res();
+  const s=document.createElement("script");s.src=src;s.onload=()=>res();
+  s.onerror=()=>rej(new Error("could not load "+src));document.head.appendChild(s);});}
+
+/* ---- minimal ZIP (store) for KMZ — works fully offline ---- */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;
+  for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}
+  return buf=>{let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=t[(c^buf[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};})();
+function sb(s){return new TextEncoder().encode(s);}
+function dataURLtoBytes(d){const i=d.indexOf(",");const bin=atob(d.slice(i+1));
+  const u=new Uint8Array(bin.length);for(let j=0;j<bin.length;j++)u[j]=bin.charCodeAt(j);return u;}
+function makeZip(files,mime){const u16=n=>[n&255,(n>>8)&255],u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  let parts=[],central=[],offset=0;
+  for(const f of files){const name=sb(f.name),data=f.data,crc=CRC(data);
+    const local=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(local),name,data);
+    const cen=[].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    central.push(new Uint8Array(cen),name);offset+=local.length+name.length+data.length;}
+  const cenSize=central.reduce((a,b)=>a+b.length,0);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),u32(cenSize),u32(offset),u16(0));
+  return new Blob(parts.concat(central,[new Uint8Array(end)]),{type:mime||"application/zip"});}
+
+/* ---- export builders ---- */
+function escXml(s){return String(s).replace(/[<>&]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));}
+function pointsGeoJSON(){return {type:"FeatureCollection",
+  crs:{type:"name",properties:{name:"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+  features:state.points.map(p=>({type:"Feature",geometry:{type:"Point",coordinates:[p.lon,p.lat]},
+    properties:{culture:p.culture,side:p.side,note:p.note||"",ts:p.ts,acc:p.acc,photo:p.photo?("photo_"+p.id+".jpg"):""}}))};}
+function trackGeoJSON(){return {type:"Feature",geometry:{type:"LineString",coordinates:state.track.map(t=>[t[1],t[0]])},
+  properties:{kind:"track",start_ts:state.trackStart,end_ts:state.trackEnd,vertices:state.track.length}};}
+function allGeoJSON(){const fc=pointsGeoJSON();if(state.track.length>1)fc.features.push(trackGeoJSON());return fc;}
+function trackGPX(){let g='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="field-survey">\n';
+  state.points.forEach(p=>{g+=`<wpt lat="${p.lat}" lon="${p.lon}"><name>${escXml(p.side+" "+p.culture)}</name><time>${p.ts.replace(" ","T")}Z</time><desc>${escXml(p.note||"")}</desc></wpt>\n`;});
+  if(state.track.length>1){g+='<trk><name>track</name><trkseg>\n';
+    state.track.forEach(t=>{g+=`<trkpt lat="${t[0]}" lon="${t[1]}"><time>${t[2].replace(" ","T")}Z</time></trkpt>\n`;});g+='</trkseg></trk>\n';}
+  return g+'</gpx>';}
+function buildKML(){
+  const styles=
+    '<Style id="L"><IconStyle><color>ffffa53d</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>'+
+    '<Style id="R"><IconStyle><color>ff597aff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>'+
+    '<Style id="B"><IconStyle><color>ff81e07e</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>'+
+    '<Style id="trk"><LineStyle><color>ff3fd2ff</color><width>4</width></LineStyle></Style>';
+  let pm="";
+  state.points.forEach(p=>{const img=p.photo?`<br/><img src="files/photo_${p.id}.jpg" width="400"/>`:"";
+    const note=p.note?escXml(p.note)+"<br/>":"";
+    pm+=`<Placemark><name>${escXml(p.side+" "+p.culture)}</name><styleUrl>#${p.side}</styleUrl>`+
+        `<description><![CDATA[${note}${escXml(p.culture)} (${p.side})<br/>${p.ts}${img}]]></description>`+
+        `<Point><coordinates>${p.lon},${p.lat},0</coordinates></Point></Placemark>`;});
+  if(state.track.length>1){const c=state.track.map(t=>t[1]+","+t[0]+",0").join(" ");
+    pm+=`<Placemark><name>Track</name><styleUrl>#trk</styleUrl><LineString><tessellate>1</tessellate><coordinates>${c}</coordinates></LineString></Placemark>`;}
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Field survey</name>'+styles+pm+'</Document></kml>';}
+function fname(ext){const d=new Date(),p=n=>String(n).padStart(2,"0");
+  return `survey_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.${ext}`;}
+async function shareOrSave(blob,name){const file=new File([blob],name,{type:blob.type});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name});return;}catch(e){}}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);}
+$("#exportBtn").addEventListener("click",()=>{
+  $("#eInfo").textContent=state.points.length+" points, track: "+(state.track.length>1?state.track.length+" vertices":"none");
+  $("#expSheet").classList.add("show");});
+$("#eClose").addEventListener("click",()=>$("#expSheet").classList.remove("show"));
+document.querySelectorAll("#expSheet .ebtn").forEach(b=>b.addEventListener("click",()=>{const e=b.dataset.e;
+  $("#expSheet").classList.remove("show");
+  if(e==="kmz"){if(!state.points.length&&state.track.length<2)return toast("Nothing to export");
+    const files=[{name:"doc.kml",data:sb(buildKML())}];
+    state.points.forEach(p=>{if(p.photo)files.push({name:"files/photo_"+p.id+".jpg",data:dataURLtoBytes(p.photo)});});
+    shareOrSave(makeZip(files,"application/vnd.google-earth.kmz"),fname("kmz"));}
+  else if(e==="points"){if(!state.points.length)return toast("No points");
+    shareOrSave(new Blob([JSON.stringify(pointsGeoJSON())],{type:"application/geo+json"}),fname("points.geojson"));}
+  else if(e==="track"){if(state.track.length<2)return toast("No track");
+    shareOrSave(new Blob([trackGPX()],{type:"application/gpx+xml"}),fname("track.gpx"));}
+  else shareOrSave(new Blob([JSON.stringify(allGeoJSON())],{type:"application/geo+json"}),fname("all.geojson"));}));
+
+/* ---- data menu: clear track / delete all (typed safeguard) ---- */
+$("#menuBtn").addEventListener("click",()=>$("#menuSheet").classList.add("show"));
+$("#mClose").addEventListener("click",()=>$("#menuSheet").classList.remove("show"));
+$("#clearTrack").addEventListener("click",()=>{if(state.track.length<1)return toast("Track is empty");
+  if(!confirm("Clear the recorded track? Points stay."))return;
+  state.track=[];state.trackStart=null;state.trackEnd=null;state.recording=false;
+  const b=$("#trackBtn");b.classList.remove("on");b.textContent="● Start track";
+  $("#recDot").className="dot";$("#recTxt").textContent="track off";relWake();
+  trackLine.setLatLngs([]);Store.save();$("#menuSheet").classList.remove("show");toast("Track cleared");});
+$("#delAll").addEventListener("click",()=>{
+  const w=prompt("This erases ALL points AND the track on this device.\nType DELETE to confirm:");
+  if(w!=="DELETE"){toast("Cancelled");return;}
+  state.points=[];state.track=[];state.trackStart=null;state.trackEnd=null;state.recording=false;state.nextId=1;
+  Object.values(markers).forEach(m=>map.removeLayer(m));for(const k in markers)delete markers[k];
+  trackLine.setLatLngs([]);const b=$("#trackBtn");b.classList.remove("on");b.textContent="● Start track";
+  $("#recDot").className="dot";$("#recTxt").textContent="track off";$("#cntTxt").textContent="0 points";relWake();
+  Store.save();$("#menuSheet").classList.remove("show");toast("All data deleted");});
+
+/* ---- init ---- */
+(async function init(){
+  if(!window.isSecureContext)showBanner("This page is not served over https — GPS and camera will only work once it is hosted (see README).");
+  try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist();}catch(e){}
+  if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js");}catch(e){}}
+  await Store.open();const saved=await Store.load();
+  if(saved){state=Object.assign(state,saved);if(!Array.isArray(state.customCrops))state.customCrops=[];
+    if(!state.nextId)state.nextId=(state.points.reduce((m,p)=>Math.max(m,p.id),0)+1)||1;}
+  $("#cultureTxt").textContent=state.armedCulture||"Winter wheat";
+  setSide($("#sideSeg"),state.armedSide||"L");updateHint();renderAll();
+  if(state.recording){const b=$("#trackBtn");b.classList.add("on");b.textContent="■ Stop track";
+    $("#recDot").className="dot rec";$("#recTxt").textContent="track ●";reqWake();}
+  startGeo();
+})();
+</script>
+</body>
+</html>
